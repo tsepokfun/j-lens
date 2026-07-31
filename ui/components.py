@@ -179,11 +179,10 @@ def analyze_token_position(
 
         J_l = j_dict[J_l_key]
 
-        # FVE via J-Lens top-K probability mass
-        logits_proj = lens_projection(h_l, J_l, W_U)
-        probs = F.softmax(logits_proj, dim=-1)
-        topk_probs, _ = torch.topk(probs, k=int(k_sparse))
-        fve_pct = topk_probs.sum().item() * 100
+        # FVE via NNLS on top-K J-Lens atoms
+        from core.j_lens_engine import compute_jlens_fve
+        fve, _, _ = compute_jlens_fve(h_l, J_l, W_U, k=int(k_sparse))
+        fve_pct = fve * 100
         all_fves.append(fve_pct)
         fve_data[layer_idx] = fve_pct
 
@@ -191,13 +190,13 @@ def analyze_token_position(
         top_tokens = get_top_tokens(h_l, J_l, W_U, tokenizer, k=5)
         token_str = ", ".join([f'"{t}"' for t, _ in top_tokens[:5]])
 
-        table_rows.append(f"| {layer_idx:02d} | {fve_pct:.1f}% | {token_str} |")
+        table_rows.append(f"| {layer_idx:02d} | {fve_pct:.2f}% | {token_str} |")
 
     table_md = "\n".join(table_rows)
 
     status_msg = (
         f"Token [{pos}] \"{token_at_pos}\" | {num_layers} layers | "
-        f"Avg FVE: {sum(all_fves)/max(1,len(all_fves)):.1f}%"
+        f"Avg FVE: {sum(all_fves)/max(1,len(all_fves)):.2f}%"
     )
 
     # Plot

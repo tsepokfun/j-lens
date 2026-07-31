@@ -16,7 +16,7 @@ def load_model() -> HookedTransformer:
         return _model
 
     print(f"[model_loader] Loading {MODEL_NAME} on {DEVICE} ({DTYPE}) ...")
-    _model = HookedTransformer.from_pretrained(
+    _model = HookedTransformer.from_pretrained_no_processing(
         MODEL_NAME,
         device=DEVICE,
         dtype=DTYPE,

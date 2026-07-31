@@ -81,3 +81,45 @@ def compute_fve(h_l: torch.Tensor, residual: torch.Tensor) -> float:
     if h_norm2 == 0:
         return 0.0
     return max(0.0, 1.0 - res_norm2 / h_norm2)
+
+
+def compute_jlens_fve(
+    h_l: torch.Tensor,
+    J_l: torch.Tensor,
+    W_U: torch.Tensor,
+    k: int = 30,
+) -> tuple[float, list[int], torch.Tensor]:
+    """Compute FVE as top-K concentration of J-Lens projection energy.
+
+    Instead of sparse reconstruction of h_l (which fails when K << d_model),
+    measures how concentrated the J-Lens logit projection is in top-K tokens.
+
+    FVE = ||logits_topk||² / ||logits_full||²
+
+    A high FVE means the activation strongly activates a few specific token
+    directions; a low FVE means the projection is diffuse across many tokens.
+
+    Returns:
+        fve:          fraction of projection energy in top-K (0-1)
+        active_ids:   token ids of top-K
+        coefficients:  not used (kept for API compatibility)
+    """
+    h_l = h_l.to(device=DEVICE, dtype=torch.float32)
+    J_l = J_l.to(device=DEVICE, dtype=torch.float32)
+    W_U = W_U.to(device=DEVICE, dtype=torch.float32)
+
+    # J-Lens projection
+    D_full = W_U.T @ J_l                                 # [vocab, d_model]
+    logits = D_full @ h_l                                # [vocab]
+
+    # Top-K concentration
+    topk_vals, top_k = torch.topk(logits, k=k)           # [K]
+
+    total_energy = (logits ** 2).sum()
+    topk_energy = (topk_vals ** 2).sum()
+    fve = (topk_energy / total_energy).item() if total_energy > 0 else 0.0
+    fve = max(0.0, min(1.0, fve))
+
+    active_ids = top_k.tolist()
+
+    return fve, active_ids, topk_vals
