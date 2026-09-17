@@ -21,7 +21,7 @@
 
 ```
 jspace_workspace/
-├── config.py                  # Model, hardware, paths
+├── config.py                  # Model, hardware, HF cache path
 ├── compute_jacobians.py       # Offline Jacobian precomputation
 ├── main.py                    # CLI launcher (test/jacobian/ui)
 ├── core/
@@ -44,7 +44,8 @@ jspace_workspace/
 ### Prerequisites
 - Windows 10/11 or Linux with CUDA GPU (≥12 GB VRAM recommended)
 - Python 3.10+ (3.12 tested)
-- 30 GB free disk space (for models + Jacobians)
+- ~10 GB free disk space for the model (`gpt2-xl`) plus the Jacobian — see
+  [Model Cache](#model-cache) for where those bytes actually land
 
 ### Install
 ```bash
@@ -78,6 +79,41 @@ python ui/app.py
 2. The model generates text; each token is displayed with its position index
 3. Enter a token position number → per-layer J-Space analysis appears
 4. See which concepts each layer associates with that token
+
+## Model Cache
+
+All models live in **one** HuggingFace cache, shared by Windows and WSL:
+
+| OS | `HF_HOME` |
+|----|-----------|
+| Windows | `%USERPROFILE%\.cache\huggingface` |
+| WSL | `/mnt/c/Users/<windows-user>/.cache/huggingface` |
+
+`config.py` sets this only as a **fallback** — an `HF_HOME` already present in
+the environment always wins, so you can relocate the cache without touching code:
+
+```bash
+setx HF_HOME "C:\path\to\cache"     # Windows — persistent, new shells only
+export HF_HOME=/path/to/cache       # WSL / bash — current session
+```
+
+Inspect it with:
+
+```bash
+python -c "from huggingface_hub import scan_cache_dir; print(round(scan_cache_dir().size_on_disk/2**30, 2), 'GiB')"
+```
+
+> **Why a single cache matters.** `huggingface_hub` stores each file's bytes
+> **once** in `blobs/<sha256>` and makes `snapshots/<commit>/<file>` a symlink to
+> it — but only *within one cache*. Two caches means two complete copies of the
+> same weights. This repo previously pinned `HF_HOME` to `D:/huggingface_cache`,
+> which drifted into a second copy alongside the default user-profile cache; the
+> paths above consolidate them.
+>
+> Because the snapshots are symlinks, **copying a cache with a tool that follows
+> symlinks (plain `robocopy`, `Copy-Item`, most file managers) will write every
+> weight file a second time and roughly double the size.** Use `robocopy /SL`,
+> `rsync -a`, or just re-download.
 
 ## Example Output
 
@@ -118,11 +154,20 @@ For larger models (6B+), use native Linux with CUDA 12.x.
 
 ## WSL Setup (Experimental)
 
-```bash
+```ini
 # .wslconfig (Windows side)
 [wsl2]
-memory=24GB
+# Leave real headroom for Windows itself.
+# Asking WSL for most of the machine's RAM starves the host: it cannot keep
+# its working set resident, so it pages continuously and pagefile.sys grows
+# without bound until the system drive fills up. On a 32 GB machine, 16GB is
+# plenty — 24GB is not, and has been observed to balloon pagefile.sys past
+# 45 GB and take C: down to under 2 GB free.
+memory=16GB
+processors=8
+```
 
+```bash
 # WSL terminal
 cd /mnt/d/J-sp/jspace_workspace
 python3 -m venv ~/jspace_venv
@@ -131,6 +176,10 @@ pip install torch transformer_lens transformers gradio plotly
 python compute_jacobians.py
 python ui/app.py
 ```
+
+WSL reads the same `HF_HOME` as Windows (the `/mnt/c/...` path in
+[Model Cache](#model-cache)), so a model downloaded on one side is not
+re-downloaded on the other.
 
 ## API Endpoints
 

@@ -4,11 +4,22 @@ import os
 from pathlib import Path
 import torch
 
-# ── HuggingFace cache on D: drive (shared Windows/WSL) ──────────────
+# ── HuggingFace cache — ONE canonical location, shared Windows/WSL ───
+# Keeping a single cache means no model weights are ever stored twice.
+# An HF_HOME already present in the environment always wins, so this is
+# only a fallback; override it freely without editing this file.
+#   Windows : %USERPROFILE%\.cache\huggingface
+#   WSL     : /mnt/c/Users/<windows-user>/.cache\huggingface
 if os.name == 'nt':
-    os.environ.setdefault("HF_HOME", "D:/huggingface_cache")
+    os.environ.setdefault("HF_HOME", str(Path.home() / ".cache" / "huggingface"))
 else:
-    os.environ.setdefault("HF_HOME", "/mnt/d/huggingface_cache")
+    # WSL: reuse the Windows-side cache so the two never diverge into
+    # two separate copies of the same weights.
+    _win_caches = sorted(Path("/mnt/c/Users").glob("*/.cache/huggingface"))
+    os.environ.setdefault(
+        "HF_HOME",
+        str(_win_caches[0]) if _win_caches else str(Path.home() / ".cache" / "huggingface"),
+    )
 
 # ── Paths (Windows-compatible via pathlib) ───────────────────────────
 BASE_DIR = Path(__file__).parent

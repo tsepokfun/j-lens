@@ -27,5 +27,7 @@ Thumbs.db
 # WSL
 jspace_venv/
 
-# HF cache (on D: drive, not in repo)
+# HF cache — lives outside the repo, in the user profile
+# (see README "Model Cache"); kept here so a stray local cache is ignored too
 huggingface_cache/
+.cache/
